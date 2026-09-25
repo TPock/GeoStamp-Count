@@ -1,0 +1,987 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1f3a2e">
+<title>GeoStamp Stock Take</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --bg: #f4f2ee; --card: #ffffff; --ink: #1c1c1c; --muted: #6b6b6b;
+    --line: #dedbd4; --brand: #1f3a2e; --brand-ink: #ffffff; --accent: #c8702a;
+    --warn-bg: #fff4e0; --warn-ink: #7a4a00; --ok-bg: #e6f2ea; --ok-ink: #1f5a36;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141614; --card: #1f221f; --ink: #ecebe7; --muted: #a3a39c;
+      --line: #343834; --brand: #3f7a5c; --brand-ink: #ffffff; --accent: #e08a45;
+      --warn-bg: #3a2c12; --warn-ink: #ffd89a; --ok-bg: #173323; --ok-ink: #9fdcb5;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { position: sticky; top: 0; z-index: 1000; background: var(--brand); color: var(--brand-ink);
+    padding: calc(10px + env(safe-area-inset-top)) 16px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  header h1 { font-size: 18px; margin: 0; letter-spacing: .02em; white-space: nowrap; }
+  #gpsChip { font-size: 13px; background: #fff2; padding: 4px 10px; border-radius: 999px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  main { padding: 16px; max-width: 720px; margin: 0 auto; display: grid; gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .big-btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%;
+    min-height: 72px; border-radius: 14px; background: var(--accent); color: #fff; font-size: 20px; font-weight: 700;
+    border: 0; cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; }
+  .big-btn.alt { background: var(--card); color: var(--ink); border: 2px solid var(--line); min-height: 56px; font-size: 17px; }
+  .big-btn:active { transform: scale(.98); }
+  .big-btn[aria-disabled="true"] { opacity: .5; pointer-events: none; }
+  button { font: inherit; min-height: 48px; padding: 0 16px; border-radius: 10px; border: 0;
+    background: var(--brand); color: var(--brand-ink); font-weight: 600; cursor: pointer; }
+  button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  button.small { min-height: 38px; padding: 0 12px; font-size: 14px; }
+  button.danger { background: transparent; color: #c0392b; border: 1px solid currentColor; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .row > * { flex: 1 1 auto; }
+  label.field, .field { display: grid; gap: 6px; font-size: 14px; color: var(--muted); }
+  input[type=text], input[type=number], select { font: inherit; font-size: 18px; padding: 10px 12px; border-radius: 10px; width: 100%;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink); min-width: 0; }
+  input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
+  #form { display: grid; gap: 14px; }
+  #form h2 { font-size: 17px; margin: 0; }
+  #preview { width: 100%; max-height: 200px; object-fit: contain; border-radius: 8px; background: #0002; }
+  .pill { padding: 8px 12px; border-radius: 8px; font-size: 14px; }
+  .pill.warn { background: var(--warn-bg); color: var(--warn-ink); }
+  .pill.ok { background: var(--ok-bg); color: var(--ok-ink); }
+  .pill.info { background: var(--bg); color: var(--muted); }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chips button { min-height: 38px; font-size: 15px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); padding: 0 12px; }
+  .chips button.on { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+  #bay { font-size: 26px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+  .seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .seg button { min-height: 46px; padding: 0 4px; font-size: 15px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); }
+  .seg button.on { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); }
+  .dims { display: grid; grid-template-columns: 1fr 1fr 1.3fr; gap: 8px; }
+  .dims input { font-size: 20px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+  .qty { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .qty .pcs-row { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 120px; align-items: center; gap: 10px; }
+  .stepper { display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; gap: 4px; }
+  .stepper button { min-height: 44px; padding: 0; font-size: 22px; background: var(--bg); color: var(--ink); border: 1px solid var(--line); }
+  .stepper input, #pcs { font-size: 22px; font-weight: 700; text-align: center; padding: 8px 2px; font-variant-numeric: tabular-nums; }
+  #totalLine { font-size: 18px; font-weight: 700; padding: 10px 12px; border-radius: 10px; background: var(--bg); text-align: center; }
+  details summary { cursor: pointer; font-weight: 600; font-size: 15px; }
+  #map { height: 340px; border-radius: 12px; border: 1px solid var(--line); z-index: 0; margin-top: 10px; }
+  .list-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .list-head h2 { font-size: 17px; margin: 0; }
+  #list { display: grid; gap: 12px; margin-top: 10px; }
+  .bay-group { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .bay-group > .bh { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--bg); font-weight: 800; font-size: 18px; }
+  .bay-group > .bh span { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .entry { padding: 10px 12px; border-top: 1px solid var(--line); display: grid; gap: 3px; }
+  .entry .what { font-weight: 700; font-size: 16px; }
+  .entry .how { font-size: 15px; }
+  .entry .meta { font-size: 12px; color: var(--muted); }
+  .entry .acts { display: flex; gap: 8px; margin-top: 4px; }
+  .tag { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 6px; background: var(--warn-bg); color: var(--warn-ink); margin-left: 6px; vertical-align: 2px; }
+  #toast { position: fixed; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 5000;
+    max-width: 688px; margin: 0 auto; padding: 14px 16px; border-radius: 12px; font-weight: 600;
+    box-shadow: 0 6px 24px #0004; transition: opacity .3s; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; pointer-events: none; }
+  .err-box { background: var(--warn-bg); color: var(--warn-ink); border: 2px solid var(--accent); border-radius: 10px;
+    padding: 12px; display: grid; gap: 10px; font-weight: 600; }
+  .err-box button.secondary { background: var(--card); }
+  .modal-bg { position: fixed; inset: 0; z-index: 4500; background: #000a; display: flex; align-items: flex-end; justify-content: center;
+    padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+  .modal { background: var(--card); color: var(--ink); border-radius: 14px; padding: 18px; width: 100%; max-width: 480px;
+    display: grid; gap: 14px; font-size: 17px; }
+  .modal-acts { display: grid; gap: 10px; }
+  .modal-acts button { min-height: 52px; }
+  .empty { color: var(--muted); font-size: 14px; padding: 8px 0; }
+  .bay-tip { font-weight: 800; font-size: 12px; background: #fffd; border: 0; box-shadow: none; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 8px 16px 24px; }
+
+  /* camera */
+  #camView { position: fixed; inset: 0; z-index: 4000; background: #000; overflow: hidden; touch-action: none; }
+  #camView video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  #guide { position: absolute; left: 50%; top: 44%; transform: translate(-50%, -50%);
+    width: min(92vw, 100vh); aspect-ratio: 3 / 2; max-height: 66vh;
+    border: 4px solid #fff; border-radius: 14px; box-shadow: 0 0 0 200vmax #0008; transition: border-color .15s; }
+  #guide.steady { border-color: #ffb347; }
+  #guide.good { border-color: #3ddc84; }
+  #guide .bar { position: absolute; left: 10px; right: 10px; bottom: -18px; height: 6px; border-radius: 3px; background: #fff3; overflow: hidden; }
+  #guide .bar i { display: block; height: 100%; width: 0; background: #3ddc84; transition: width .1s; }
+  #camHint { position: absolute; left: 16px; right: 16px; top: calc(16px + env(safe-area-inset-top)); text-align: center; color: #fff;
+    font-size: 18px; font-weight: 700; text-shadow: 0 1px 4px #000; }
+  #camBar { position: absolute; left: 0; right: 0; bottom: 0; padding: 16px 24px calc(24px + env(safe-area-inset-bottom));
+    display: flex; justify-content: space-between; align-items: center; }
+  #camBar button { background: #0009; color: #fff; border: 1px solid #fff6; min-width: 90px; }
+  #shutter { width: 76px; height: 76px; min-width: 0 !important; border-radius: 50% !important; background: #fff !important; border: 5px solid #fff8 !important; padding: 0; background-clip: padding-box !important; }
+  #flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; transition: opacity .25s; }
+  #camDebug { position: absolute; left: 8px; bottom: 120px; color: #0f0; font: 12px monospace; text-shadow: 0 0 2px #000; }
+</style>
+</head>
+<body>
+<header>
+  <h1>GeoStamp Stock Take</h1>
+  <span id="gpsChip">📍 starting…</span>
+</header>
+
+<main>
+  <button class="big-btn" id="scanBtn" type="button">📷 Scan label</button>
+  <button class="big-btn alt" id="manualBtn" type="button">✍️ No label, enter by hand</button>
+  <input id="photoInput" class="visually-hidden" type="file" accept="image/*" capture="environment" tabindex="-1" aria-hidden="true">
+
+  <section id="form" class="card" hidden>
+    <h2 id="formTitle">Scanned label</h2>
+    <img id="preview" alt="Captured label" hidden>
+    <div id="ocrStatus" class="pill info" hidden>Reading label…</div>
+    <div id="readError" class="err-box" hidden>
+      <div id="readErrorMsg"></div>
+      <div class="row">
+        <button id="rescanBtn" type="button">📷 Rescan</button>
+        <button id="fillBtn" type="button" class="secondary">⌨️ Fill in by hand</button>
+      </div>
+    </div>
+
+    <div class="field">Bay
+      <input id="bay" type="text" autocomplete="off" autocapitalize="characters" list="bayList" placeholder="e.g. 1A">
+      <datalist id="bayList"></datalist>
+      <div id="bayStatus" class="pill info">Working out bay from GPS…</div>
+      <div id="bayChips" class="chips"></div>
+    </div>
+
+    <div class="field">Product
+      <div class="seg" id="productSeg">
+        <button type="button" data-p="I-Joist">I-Joist</button>
+        <button type="button" data-p="Kerto-S">Kerto-S</button>
+        <button type="button" data-p="Kerto-Q">Kerto-Q</button>
+        <button type="button" data-p="Other">Other</button>
+      </div>
+    </div>
+
+    <div class="field">Size (mm): width × depth × length
+      <div class="dims">
+        <input id="w" type="number" inputmode="numeric" placeholder="W" aria-label="Width mm" list="wList">
+        <input id="d" type="number" inputmode="numeric" placeholder="D" aria-label="Depth mm" list="dList">
+        <input id="l" type="number" inputmode="numeric" placeholder="Length" aria-label="Length mm" list="lList">
+      </div>
+      <datalist id="wList"></datalist><datalist id="dList"></datalist><datalist id="lList"></datalist>
+    </div>
+
+    <div class="qty">
+      <label class="field pcs-row"><span>Pcs per pack (from label)</span>
+        <input id="pcs" type="number" inputmode="numeric" placeholder="0">
+      </label>
+      <div class="field">Packs
+        <div class="stepper"><button type="button" data-step="packs" data-by="-1">−</button><input id="packs" type="number" inputmode="numeric" value="1"><button type="button" data-step="packs" data-by="1">+</button></div>
+      </div>
+      <div class="field">Loose pcs
+        <div class="stepper"><button type="button" data-step="loose" data-by="-1">−</button><input id="loose" type="number" inputmode="numeric" value="0"><button type="button" data-step="loose" data-by="1">+</button></div>
+      </div>
+    </div>
+    <div id="totalLine">0 pcs</div>
+
+    <details id="moreBox">
+      <summary>Label ref &amp; note</summary>
+      <div style="display:grid;gap:10px;margin-top:10px">
+        <label class="field">Label ref (batch / pack no.)<input id="ref" type="text" autocomplete="off"></label>
+        <label class="field">Note<input id="note" type="text" placeholder="e.g. top of stack, damaged wrap"></label>
+      </div>
+    </details>
+
+    <div class="row">
+      <button id="saveBtn" type="button">Add to count</button>
+      <button id="discardBtn" type="button" class="secondary">Discard</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <details id="mapBox">
+      <summary>Yard map &amp; bays</summary>
+      <div id="map"></div>
+      <div id="bayInfo" class="empty"></div>
+    </details>
+  </section>
+
+  <section class="card">
+    <div class="list-head">
+      <h2 id="listTitle">Count</h2>
+      <div class="row" style="flex:0 0 auto">
+        <button id="exportBtn" class="small">Export CSV</button>
+        <button id="clearBtn" class="small danger">Clear</button>
+      </div>
+    </div>
+    <div id="list"></div>
+  </section>
+</main>
+
+<div id="camView" hidden>
+  <video id="video" playsinline muted autoplay></video>
+  <div id="guide"><div class="bar"><i id="camProgress"></i></div></div>
+  <div id="camHint">Fit the label inside the box</div>
+  <div id="camDebug" hidden></div>
+  <div id="flash"></div>
+  <div id="camBar">
+    <button id="camCancel" type="button">Cancel</button>
+    <button id="shutter" type="button" aria-label="Take photo now"></button>
+    <button id="torchBtn" type="button" hidden>🔦 Light</button>
+    <span id="torchSpacer" style="min-width:90px"></span>
+  </div>
+</div>
+
+<div id="toast" hidden></div>
+<div id="modal" class="modal-bg" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalMsg">
+    <div id="modalMsg"></div>
+    <div class="modal-acts">
+      <button id="modalSave" type="button">Add it to the count first</button>
+      <button id="modalDiscard" type="button" class="danger">Discard it</button>
+      <button id="modalCancel" type="button" class="secondary">Go back</button>
+    </div>
+  </div>
+</div>
+<footer>Labels are read on this phone and photos are never uploaded. The count is saved on this phone only until you export it.</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>
+(() => {
+  const STORE_KEY = 'geostamp.v1';
+  const BAYS_CACHE_KEY = 'geostamp.bays.v1';
+  const $ = id => document.getElementById(id);
+  const DEBUG = /[?&]debug\b/.test(location.search);
+
+  // ---------- storage (phone only) ----------
+  let items = [];
+  try { items = JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { items = []; }
+  function persist() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(items)); } catch { /* private mode etc. */ }
+  }
+
+  // ---------- bays (bays.json next to this page, same for everyone) ----------
+  let bays = []; // { name, ring: [[lat,lng],...] }
+  let baysSource = 'none';
+  function parseBays(gj) {
+    const out = [];
+    for (const f of (gj && gj.features) || []) {
+      const name = String(f.properties?.name || '').trim().toUpperCase();
+      const g = f.geometry;
+      if (!name || !g) continue;
+      const polys = g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+      for (const p of polys) if (p[0]?.length >= 3) out.push({ name, ring: p[0].map(([lng, lat]) => [lat, lng]) });
+    }
+    return out;
+  }
+  async function loadBays() {
+    try {
+      const res = await fetch('bays.json', { cache: 'no-cache' });
+      if (!res.ok) throw new Error(res.status);
+      const gj = await res.json();
+      bays = parseBays(gj); baysSource = 'online';
+      try { localStorage.setItem(BAYS_CACHE_KEY, JSON.stringify(gj)); } catch {}
+    } catch {
+      try { bays = parseBays(JSON.parse(localStorage.getItem(BAYS_CACHE_KEY))); baysSource = bays.length ? 'saved copy' : 'none'; }
+      catch { bays = []; }
+    }
+    $('bayList').innerHTML = [...new Set(bays.map(b => b.name))].sort(bayCompare).map(n => `<option value="${esc(n)}">`).join('');
+    drawBays(); updateGpsChip(); refreshBaySuggestion();
+  }
+  const bayCompare = (a, b) => a.localeCompare(b, 'en', { numeric: true });
+
+  // Flat-earth metres around the point: fine over a yard.
+  function toXY(lat, lng, lat0, lng0) {
+    return [(lng - lng0) * Math.cos(lat0 * Math.PI / 180) * 111320, (lat - lat0) * 110540];
+  }
+  function inside(pt, poly) {
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  }
+  function segDist(p, a, b) {
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy || 1)));
+    return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
+  }
+  function area(poly) { let s = 0; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) s += (poly[j][0] + poly[i][0]) * (poly[j][1] - poly[i][1]); return Math.abs(s / 2); }
+
+  // Rank bays by distance from the GPS fix (0 = inside). Smallest bay wins if inside several.
+  function rankBays(fix) {
+    if (!fix || !bays.length) return [];
+    const best = new Map();
+    for (const b of bays) {
+      const poly = b.ring.map(([la, ln]) => toXY(la, ln, fix.lat, fix.lng));
+      const p = [0, 0];
+      let dist = Infinity;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) dist = Math.min(dist, segDist(p, poly[j], poly[i]));
+      const isIn = inside(p, poly);
+      const r = { name: b.name, dist: isIn ? 0 : dist, inside: isIn, area: area(poly) };
+      const prev = best.get(b.name);
+      if (!prev || r.dist < prev.dist || (r.inside && prev.inside && r.area < prev.area)) best.set(b.name, r);
+    }
+    return [...best.values()].sort((a, b) => a.dist - b.dist || a.area - b.area);
+  }
+  // Best guess: a bay we're in or near (allowing for GPS error), otherwise nothing.
+  function guessBay(fix) {
+    const ranked = rankBays(fix);
+    const top = ranked[0];
+    if (!top) return { ranked, bay: null };
+    const slack = Math.max(8, fix.acc) + 5;
+    return { ranked, bay: top.dist <= slack ? top : null };
+  }
+
+  // ---------- GPS: keep watching while the page is open ----------
+  let fixes = [], watchId = null, gpsError = '';
+  function startWatch() {
+    if (watchId != null || !('geolocation' in navigator)) { if (!('geolocation' in navigator)) gpsError = 'no GPS on this browser'; updateGpsChip(); return; }
+    watchId = navigator.geolocation.watchPosition(p => {
+      gpsError = '';
+      fixes.push({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy), t: Date.now() });
+      fixes = fixes.filter(f => Date.now() - f.t < 30000).slice(-40);
+      updateGpsChip(); drawMe(); refreshBaySuggestion();
+    }, err => {
+      gpsError = err.code === 1 ? 'location blocked' : 'no GPS fix';
+      updateGpsChip();
+      if (err.code === 1) setBayStatus('warn', 'Location is blocked. Allow location for this site in your phone settings, or pick the bay yourself.');
+    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+  }
+  function stopWatch() { if (watchId != null) navigator.geolocation.clearWatch(watchId); watchId = null; }
+  document.addEventListener('visibilitychange', () => document.hidden ? stopWatch() : startWatch());
+  // Best recent fix: accuracy plus ~1.5 m per second of age (you may have walked since), so an older
+  // sharp fix only wins if it's very recent. Nothing older than a minute.
+  function bestFix() {
+    const now = Date.now();
+    const score = f => f.acc + 1.5 * (now - f.t) / 1000;
+    const recent = fixes.filter(f => now - f.t < 60000);
+    return recent.length ? recent.reduce((a, b) => (score(b) < score(a) ? b : a)) : null;
+  }
+  function updateGpsChip() {
+    const f = bestFix();
+    if (!f) { $('gpsChip').textContent = '📍 ' + (gpsError || 'finding location…'); return; }
+    const g = guessBay(f);
+    $('gpsChip').textContent = `📍 ±${f.acc} m` + (bays.length ? ` · ${g.bay ? 'Bay ' + g.bay.name : 'no bay'}` : '');
+  }
+
+  // ---------- map ----------
+  let map = null, bayLayer = null, meLayer = null, entryLayer = null;
+  function ensureMap() {
+    if (map) { setTimeout(() => map.invalidateSize(), 50); return; }
+    const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      { maxNativeZoom: 19, maxZoom: 21, attribution: 'Imagery &copy; Esri' });
+    const streets = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { maxNativeZoom: 19, maxZoom: 21, attribution: '&copy; OpenStreetMap contributors' });
+    map = L.map('map', { layers: [satellite] }).setView([54.5, -2.5], 5);
+    L.control.layers({ 'Satellite': satellite, 'Map': streets }).addTo(map);
+    bayLayer = L.featureGroup().addTo(map);
+    entryLayer = L.layerGroup().addTo(map);
+    meLayer = L.layerGroup().addTo(map);
+    drawBays(true); drawEntries(); drawMe();
+    if (!bays.length && bestFix()) map.setView([bestFix().lat, bestFix().lng], 18);
+  }
+  function drawBays(fit) {
+    const n = new Set(bays.map(b => b.name)).size;
+    $('bayInfo').textContent = n ? `${n} bays loaded (${baysSource}).` : 'No bays set up yet. Draw them with bays.html and put bays.json next to this page. Until then, type the bay in.';
+    if (!map) return;
+    bayLayer.clearLayers();
+    for (const b of bays) {
+      L.polygon(b.ring, { color: '#ffd24a', weight: 2, fillOpacity: .12 })
+        .bindTooltip(b.name, { permanent: true, direction: 'center', className: 'bay-tip' }).addTo(bayLayer);
+    }
+    if (fit && bays.length) map.fitBounds(bayLayer.getBounds(), { padding: [20, 20] });
+  }
+  function drawMe() {
+    if (!map) return;
+    meLayer.clearLayers();
+    const f = bestFix();
+    if (!f) return;
+    L.circle([f.lat, f.lng], { radius: f.acc, color: '#2d7ff9', weight: 1, fillOpacity: .12 }).addTo(meLayer);
+    L.circleMarker([f.lat, f.lng], { radius: 7, color: '#fff', weight: 2, fillColor: '#2d7ff9', fillOpacity: 1 }).addTo(meLayer);
+  }
+  function drawEntries() {
+    if (!map) return;
+    entryLayer.clearLayers();
+    for (const it of items) {
+      if (it.lat == null) continue;
+      L.circleMarker([it.lat, it.lng], { radius: 5, color: '#fff', weight: 1, fillColor: '#c8702a', fillOpacity: 1 })
+        .bindPopup(`<b>${esc(it.bay || '?')}</b> · ${esc(describe(it))}<br>${esc(qtyText(it))}<br>${esc(fmtTime(it.ts))} · ±${it.acc} m`)
+        .addTo(entryLayer);
+    }
+  }
+  $('mapBox').addEventListener('toggle', () => { if ($('mapBox').open) ensureMap(); });
+
+  // ---------- label reading ----------
+  let workerPromise = null;
+  function getWorker() {
+    if (!workerPromise) {
+      workerPromise = Tesseract.createWorker('eng', 1, {
+        logger: m => { if (m.status === 'recognizing text') setOcr('info', `Reading label… ${Math.round(m.progress * 100)}%`); }
+      });
+      workerPromise.catch(() => { workerPromise = null; });
+    }
+    return workerPromise;
+  }
+
+  // Scaled greyscale copy of a canvas/image for the text reader.
+  function grey(src, maxSide) {
+    const sw = src.naturalWidth || src.width, sh = src.naturalHeight || src.height;
+    const s = Math.min(2, maxSide / Math.max(sw, sh)); // small camera crops get enlarged; helps the reader
+    const c = document.createElement('canvas');
+    c.width = Math.round(sw * s); c.height = Math.round(sh * s);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(src, 0, 0, c.width, c.height);
+    const d = ctx.getImageData(0, 0, c.width, c.height), px = d.data;
+    for (let i = 0; i < px.length; i += 4) px[i] = px[i + 1] = px[i + 2] = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+    ctx.putImageData(d, 0, 0);
+    return c;
+  }
+
+  const SEP = '[ \\t]{0,3}(?:[*xX×+%#"\'°.,:;~]{1,3}|X)[ \\t]{0,3}';
+  // Pull product, sizes and pcs out of the OCR text. Allows for common misreads (O/0, I/1/|, B/8).
+  function parseLabel(raw) {
+    const t = String(raw || '').toUpperCase().replace(/[|!]/g, 'I').replace(/[“”]/g, '"');
+    const r = { type: null, w: null, d: null, l: null, pcs: null, ref: '', desc: '', vol: null, alt: {} };
+    const inRange = (v, lo, hi) => v >= lo && v <= hi;
+
+    // Kerto: "45 * 240 * 12000". Digits can come back as letters ("A5 * 24% * 12000"), so map those back.
+    const digits = s => s.replace(/[AH]/g, '4').replace(/[OQD%]/g, '0').replace(/S/g, '5').replace(/B/g, '8').replace(/[IL]/g, '1');
+    const kRe = new RegExp('(?:^|[^\\dA-Z])([\\dAOSBIL]{2,3})' + SEP + '([\\dAOSBIL%]{2,4})' + SEP + '(\\d{4,5})(?!\\d)', 'm');
+    const km = t.match(kRe);
+    const kertoWords = /KERT[O0]|(?:^|[^A-Z])S\s?-\s?[A-Z]{2,4}M\b|Q\s?-?\s?PANEL|\bLVL\b|WEATHERGUARD|FACEJ[O0]INT/.test(t);
+    const joistWords = /SAP\s*C[O0]DE|[O0]RDER\s*N[O0]|LENGTH\s*\(M\)|PIECES|DESCRIPTI[O0]N|BATCH|\bI\s?B[\s_]*\d\d/.test(t);
+    const kw = km ? +digits(km[1]) : 0, kd = km ? +digits(km[2]) : 0, kl = km ? +km[3] : 0;
+    if (km && inRange(kw, 18, 120) && inRange(kd, 18, 2500) && inRange(kl, 1000, 25000)) {
+      r.type = 'Kerto'; r.w = kw; r.d = kd; r.l = kl;
+    } else if (kertoWords && !joistWords) r.type = 'Kerto';
+
+    if (r.type === 'Kerto') {
+      if (/(?:^|[^A-Z])S\s?-\s?[A-Z]{2,4}M\b|S\s?BEAM|KERT[O0]\s?-?S|KERT[O0]\s?S[O0]\d/.test(t)) r.type = 'Kerto-S';
+      else if (/Q\s?-?\s?PANEL|KERT[O0]\s?-?Q/.test(t)) r.type = 'Kerto-Q';
+      // Product code like KERTOS045240 = width 45, depth 240 (backup if the size line didn't read)
+      const code = t.match(/KERT[O0][SQ]([0-9O]{3})([0-9O]{3})/);
+      if (code && !r.w) { r.w = +code[1].replace(/O/g, '0'); r.d = +code[2].replace(/O/g, '0'); }
+      if (!r.l) { const lm = t.match(/[*X×%][ \t]{0,3}(\d{4,5})(?!\d)/); if (lm && inRange(+lm[1], 1000, 25000)) r.l = +lm[1]; }
+      const tens = (t.match(/(?<![\d/])\d{10}(?![\d/])/g) || []);
+      const twice = tens.find((n, i) => tens.indexOf(n) !== i);
+      r.ref = twice || tens.find(n => !/^(22|30)/.test(n)) || '';
+    } else if (joistWords || /\d{4,5}\s*_{2,}/.test(t)) {
+      r.type = 'I-Joist';
+      // A leading "$" is usually a misread 9 (sometimes 5). Take 9, keep 5 as a fallback for the volume check.
+      const dollar = (s, k) => { if (!s.startsWith('$')) return +s; (r.alt[k] = r.alt[k] || []).push(+('5' + s.slice(1))); return +('9' + s.slice(1)); };
+      // Size "96_240" = flange width _ depth
+      const sizes = [...t.matchAll(/(?:^|[^\d$])([\d$]\d{1,2})[ \t]?[_\-~=.][ \t]?(\d{3})(?!\d)/gm)]
+        .concat([...t.matchAll(/(?:^|[^\d$])([\d$]\d{1,2})[ \t]{1,2}(\d{3})(?!\d)/gm)]);
+      const sz = sizes.find(m => inRange(+m[1].replace('$', '9'), 38, 130) && inRange(+m[2], 150, 600) && +m[2] % 5 === 0);
+      if (sz) { r.w = dollar(sz[1], 'w'); r.d = +sz[2]; }
+      // Length: "10000___IB_39__P"
+      const lm = t.match(/(?:^|[^\d$])([\d$]\d{3,4})[\s_\-—=.,~]*[I1LT][\s_\-]?[B8](?![A-Z])/m) || t.match(/(?:^|[^\d$])([\d$]\d{3,4})[ \t]*_{2,}/m);
+      if (lm && inRange(+lm[1].replace('$', '9'), 1000, 25000)) r.l = dollar(lm[1], 'l');
+      const dm = t.match(/[I1L]\s?[B8][\s_]*(\d{2})(?:[\s_]+([A-Z])(?![A-Z]))?/);
+      if (dm) r.desc = 'IB ' + dm[1] + (dm[2] ? ' ' + dm[2] : '');
+      const bm = t.match(/BATCH[:\s]*(\d{10})/) || t.match(/(?<!\d)(82\d{8})(?!\d)/);
+      if (bm) r.ref = bm[1];
+      // Pack volume "4.838 NM³" = pcs × length × width × depth. Used to check the other numbers.
+      const vm = t.match(/(?<![\d.,])(\d{1,2}[.,]\d{3})[ \t]*N?\s?M/);
+      if (vm) r.vol = +vm[1].replace(',', '.');
+    }
+    const pm = t.match(/(?:^|[^\d])(\d{1,4})[ \t]*P[CG][S5$](?![A-Z])/m);
+    if (pm && +pm[1] > 0) r.pcs = +pm[1];
+    return r;
+  }
+  // Combine several reads: for each field take the value most reads agree on.
+  // Ties go to the earlier read; lengths that are a round 50 mm win over odd ones (a stray misread digit).
+  function voteParse(list) {
+    const out = { type: null, w: null, d: null, l: null, pcs: null, ref: '', desc: '', vol: null }, conflict = {};
+    const seen = { w: new Set(), d: new Set(), l: new Set(), pcs: new Set(), vol: new Set() };
+    list.forEach(r => Object.keys(seen).forEach(k => { if (r[k]) seen[k].add(r[k]); (r.alt?.[k] || []).forEach(v => seen[k].add(v)); }));
+    for (const k of Object.keys(out)) {
+      const counts = new Map();
+      list.forEach((r, i) => {
+        let v = r[k];
+        if (v == null || v === '') return;
+        if (k === 'type' && v === 'Kerto') return; // unknown S/Q: counted below
+        const c = counts.get(v) || { n: 0, first: i };
+        c.n++; counts.set(v, c);
+      });
+      if (k === 'type' && !counts.size && list.some(r => r.type === 'Kerto')) { out.type = 'Kerto'; continue; }
+      if (k === 'type' && counts.size && list.some(r => r.type === 'Kerto')) {
+        // a plain "Kerto" read backs up whichever Kerto-S/Q we saw
+        for (const [v, c] of counts) if (/^Kerto-/.test(v)) c.n += list.filter(r => r.type === 'Kerto').length;
+      }
+      const score = (v, c) => c.n * 10 + (k === 'l' && v % 50 === 0 ? 5 : 0) - c.first * .1;
+      const ranked = [...counts].sort((a, b) => score(b[0], b[1]) - score(a[0], a[1]));
+      if (ranked.length) out[k] = ranked[0][0];
+      conflict[k] = ranked.length > 1;
+    }
+    // I-Joist volume check: find the combination of read values that multiplies out to the label's volume.
+    out.volOk = false;
+    if (out.type === 'I-Joist' && seen.vol.size) {
+      const vol = [...seen.vol], opt = k => seen[k].size ? [...seen[k]] : [null];
+      let best = null;
+      const votesFor = (k, x) => list.filter(r => r[k] === x).length;
+      for (const v of vol) for (const w of opt('w')) for (const d of opt('d')) {
+        if (!w || !d) continue;
+        const tries = [];
+        for (const l of opt('l')) for (const p of opt('pcs')) {
+          if (l && p) tries.push([l, p, 0]);
+          // Every read of the length may be wrong (9000 read as 9006): work it out from the volume,
+          // but only accept a round 100 mm. Pcs is only worked out if it wasn't read at all.
+          if (p) { const L = Math.round(v * 1e9 / (p * w * d) / 100) * 100; if (L !== l) tries.push([L, p, 1]); }
+          if (l && !seen.pcs.size) tries.push([l, Math.round(v * 1e9 / (l * w * d)), 1]);
+        }
+        for (const [L, P, derived] of tries) {
+          if (!(L >= 1000 && L <= 25000 && P >= 1 && P <= 500)) continue;
+          if (Math.abs(P * L * w * d / 1e9 - v) > 0.0006) continue; // label volume is to 3 decimals
+          const votes = votesFor('w', w) + votesFor('d', d) + votesFor('l', L) + votesFor('pcs', P);
+          if (!best || derived < best.derived || (derived === best.derived && votes > best.votes))
+            best = { w, d, l: L, pcs: P, vol: v, derived, votes };
+        }
+      }
+      if (best) {
+        // Only a straight match of read numbers counts as checked. A worked-out number fills the gap
+        // but still gets flagged (a misread width can hide behind a made-up pcs with the same volume).
+        const readL = list.some(r => r.l === best.l), readP = list.some(r => r.pcs === best.pcs);
+        Object.assign(out, { w: best.w, d: best.d, l: best.l, pcs: best.pcs, vol: best.vol, volOk: !best.derived });
+        ['w', 'd', 'l', 'pcs'].forEach(k => { conflict[k] = false; });
+        if (best.derived) { conflict.w = true; if (!readL) conflict.l = true; if (!readP) conflict.pcs = true; }
+      } else out.volMismatch = true;
+    }
+    return { res: out, conflict };
+  }
+  const parseComplete = r => r.type && r.type !== 'Kerto' && r.w && r.d && r.l && r.pcs;
+
+  // Read the label a few ways and vote. Stop early once two reads agree on everything.
+  async function readLabel(src) {
+    const worker = await getWorker();
+    const passes = [[1600, '11'], [1600, '6'], [1200, '11'], [2000, '11']];
+    const reads = [], texts = [];
+    const cache = {};
+    let v = voteParse([]);
+    for (const [size, psm] of passes) {
+      const c = cache[size] || (cache[size] = grey(src, size));
+      await worker.setParameters({ tessedit_pageseg_mode: psm });
+      const { data } = await worker.recognize(c);
+      texts.push(data.text || '');
+      reads.push(parseLabel(data.text));
+      v = voteParse(reads);
+      const agreed = ['type', 'w', 'd', 'l', 'pcs'].every(k => !v.conflict[k]);
+      if (v.res.volOk || (parseComplete(v.res) && reads.length >= 2 && agreed)) break;
+    }
+    return { res: v.res, conflict: v.conflict, reads, texts };
+  }
+
+  // ---------- camera with auto-snap ----------
+  let stream = null, camTimer = null, camState = null, torchOn = false;
+  async function openCamera(testStream) {
+    if (!testStream && !navigator.mediaDevices?.getUserMedia) { $('photoInput').click(); return; }
+    try {
+      stream = testStream || await navigator.mediaDevices.getUserMedia({
+        audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 3840 }, height: { ideal: 2160 } }
+      });
+    } catch (err) {
+      console.warn(err);
+      toast('warn', 'Camera not available here, using the photo camera instead.');
+      $('photoInput').click(); return;
+    }
+    const v = $('video');
+    v.srcObject = stream;
+    $('camView').hidden = false;
+    $('camDebug').hidden = !DEBUG;
+    try { await v.play(); } catch {}
+    const track = stream.getVideoTracks()[0];
+    const caps = track?.getCapabilities ? track.getCapabilities() : {};
+    $('torchBtn').hidden = !caps.torch; $('torchSpacer').hidden = !!caps.torch; torchOn = false;
+    try { if (caps.focusMode?.includes('continuous')) await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }); } catch {}
+    camState = { start: performance.now(), prev: null, good: 0, sharpHist: [] };
+    setGuide('', 'Fit the label inside the box');
+    loop();
+  }
+  function closeCamera() {
+    clearTimeout(camTimer); camTimer = null;
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = null; $('video').srcObject = null;
+    $('camView').hidden = true;
+  }
+  // Where the guide box sits in the video's own pixels (video is object-fit: cover).
+  function guideRect(margin = 0) {
+    const v = $('video'), vw = v.videoWidth, vh = v.videoHeight;
+    const vr = v.getBoundingClientRect(), gr = $('guide').getBoundingClientRect();
+    const s = Math.max(vr.width / vw, vr.height / vh);
+    const ox = (vr.width - vw * s) / 2, oy = (vr.height - vh * s) / 2;
+    let x = (gr.left - vr.left - ox) / s, y = (gr.top - vr.top - oy) / s, w = gr.width / s, h = gr.height / s;
+    x -= w * margin; y -= h * margin; w *= 1 + 2 * margin; h *= 1 + 2 * margin;
+    x = Math.max(0, x); y = Math.max(0, y); w = Math.min(vw - x, w); h = Math.min(vh - y, h);
+    return { x, y, w, h };
+  }
+  const probe = document.createElement('canvas');
+  // Every ~100 ms: is the label steady, sharp and full of print? Hold that for ~0.6 s, then snap.
+  function loop() {
+    camTimer = setTimeout(loop, 100);
+    const v = $('video');
+    if (!v.videoWidth || !camState) return;
+    const g = guideRect();
+    const W = 160, H = Math.max(40, Math.round(W * g.h / g.w));
+    probe.width = W; probe.height = H;
+    const ctx = probe.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(v, g.x, g.y, g.w, g.h, 0, 0, W, H);
+    const px = ctx.getImageData(0, 0, W, H).data;
+    const gr = new Float32Array(W * H);
+    let sum = 0, sum2 = 0;
+    for (let i = 0; i < gr.length; i++) { const y = 0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2]; gr[i] = y; sum += y; sum2 += y * y; }
+    const mean = sum / gr.length, sd = Math.sqrt(Math.max(0, sum2 / gr.length - mean * mean));
+    let edge = 0, motion = 0;
+    for (let y = 0; y < H - 1; y++) for (let x = 0; x < W - 1; x++) {
+      const i = y * W + x; edge += Math.abs(gr[i + 1] - gr[i]) + Math.abs(gr[i + W] - gr[i]);
+    }
+    edge /= (W - 1) * (H - 1);
+    const prev = camState.prev;
+    if (prev && prev.length === gr.length) { for (let i = 0; i < gr.length; i++) motion += Math.abs(gr[i] - prev[i]); motion /= gr.length; } else motion = 99;
+    camState.prev = gr;
+    const now = performance.now();
+    const steady = motion < 4;
+    // Sharpness is compared with other steady frames only (the view changes while the phone moves).
+    camState.sharpHist = camState.sharpHist.filter(h => now - h.t < 2000);
+    if (steady) camState.sharpHist.push({ t: now, s: edge });
+    const maxSharp = Math.max(edge, ...camState.sharpHist.map(h => h.s));
+    const warm = now - camState.start > 900;
+    const bright = mean > 55 && sd > 20;
+    const printed = edge > 6;
+    const sharp = edge >= 0.8 * maxSharp;
+    const ok = warm && bright && printed && steady && sharp;
+    camState.good = ok ? camState.good + 1 : (steady && camState.good > 0 && printed ? camState.good - 1 : 0);
+    const need = 6;
+    $('camProgress').style.width = Math.min(100, camState.good / need * 100) + '%';
+    if (DEBUG) $('camDebug').textContent = `mean ${mean.toFixed(0)} sd ${sd.toFixed(0)} edge ${edge.toFixed(1)}/${maxSharp.toFixed(1)} motion ${motion.toFixed(1)} good ${camState.good}`;
+    if (!bright || !printed) setGuide('', bright ? 'Move closer so the label fills the box' : 'Too dark: find some light or turn the light on');
+    else if (!steady) setGuide('', 'Hold still…');
+    else if (ok) setGuide('good', 'Hold it there…');
+    else setGuide('steady', 'Focusing…');
+    if (camState.good >= need) snap();
+  }
+  function setGuide(cls, hint) { $('guide').className = cls; $('camHint').textContent = hint; }
+  // Grab the full-resolution frame inside the box (+ a little margin) and read it.
+  function snap() {
+    const v = $('video');
+    if (!v.videoWidth) return;
+    clearTimeout(camTimer); camTimer = null; camState = null;
+    const g = guideRect(0.04);
+    const c = document.createElement('canvas');
+    c.width = Math.round(g.w); c.height = Math.round(g.h);
+    c.getContext('2d').drawImage(v, g.x, g.y, g.w, g.h, 0, 0, c.width, c.height);
+    $('flash').style.transition = 'none'; $('flash').style.opacity = .9;
+    requestAnimationFrame(() => { $('flash').style.transition = 'opacity .25s'; $('flash').style.opacity = 0; });
+    if (navigator.vibrate) navigator.vibrate(60);
+    setTimeout(closeCamera, 150);
+    handleShot(c);
+  }
+  $('shutter').addEventListener('click', snap);
+  $('camCancel').addEventListener('click', () => { closeCamera(); });
+  $('torchBtn').addEventListener('click', async () => {
+    const track = stream?.getVideoTracks()[0];
+    torchOn = !torchOn;
+    try { await track.applyConstraints({ advanced: [{ torch: torchOn }] }); } catch { torchOn = false; }
+  });
+
+  // Photo fallback (no live camera): whole photo, read as-is.
+  $('photoInput').addEventListener('change', async e => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+      handleShot(img);
+    } catch { toast('warn', 'Couldn’t open that photo.'); }
+    finally { setTimeout(() => URL.revokeObjectURL(url), 10000); }
+  });
+
+  // ---------- the entry form ----------
+  let form = null; // { method, editingId, fix, bayGps, bayTouched }
+  const formOpen = () => !$('form').hidden;
+
+  function openForm(method, entry) {
+    form = { method, editingId: entry?.id || null, fix: entry ? null : bestFix(), openedAt: Date.now(), bayGps: entry?.bayGps || null, bayTouched: !!entry };
+    $('form').hidden = false;
+    $('formTitle').textContent = entry ? 'Edit entry' : method === 'Scan' ? 'Scanned label' : 'Manual entry (no label)';
+    $('preview').hidden = true; $('ocrStatus').hidden = true; $('readError').hidden = true;
+    $('bay').value = entry?.bay || '';
+    setProduct(entry?.product || null);
+    $('w').value = entry?.w ?? ''; $('d').value = entry?.d ?? ''; $('l').value = entry?.l ?? '';
+    $('pcs').value = entry?.pcs ?? ''; $('packs').value = entry?.packs ?? (method === 'Manual' ? 0 : 1); $('loose').value = entry?.loose ?? 0;
+    $('ref').value = entry?.ref || ''; $('note').value = entry?.note || '';
+    $('moreBox').open = !!(entry?.note);
+    fillDatalists();
+    if (entry) setBayStatus('info', entry.bayGps ? `GPS suggested ${entry.bayGps} when this was counted.` : 'Bay picked by hand.');
+    refreshBaySuggestion();
+    updateTotal();
+    $('form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function handleShot(src) {
+    openForm('Scan');
+    $('preview').hidden = false;
+    const pv = grey(src, 900); // small preview only; not stored
+    $('preview').src = pv.toDataURL('image/jpeg', .7);
+    $('scanBtn').setAttribute('aria-disabled', 'true');
+    setOcr('info', 'Reading label…'); $('ocrStatus').hidden = false;
+    try {
+      const { res, conflict, texts } = await readLabel(src);
+      if (DEBUG) console.log(texts.join('\n-----\n'), res);
+      if (!formOpen() || form?.method !== 'Scan') return;
+      if (res.type && res.type !== 'Kerto') setProduct(res.type);
+      if (res.w) $('w').value = res.w;
+      if (res.d) $('d').value = res.d;
+      if (res.l) $('l').value = res.l;
+      if (res.pcs) $('pcs').value = res.pcs;
+      if (res.ref) $('ref').value = res.ref;
+      form.desc = res.desc || '';
+      form.ocr = res;
+      updateTotal();
+      const missing = [];
+      if (!res.type || res.type === 'Kerto') missing.push(res.type === 'Kerto' ? 'Kerto S or Q' : 'product');
+      if (!res.w || !res.d) missing.push('width/depth');
+      if (!res.l) missing.push('length');
+      if (!res.pcs) missing.push('pcs per pack');
+      const unsure = { w: 'width', d: 'depth', l: 'length', pcs: 'pcs per pack' };
+      const shaky = Object.keys(unsure).filter(k => conflict[k] && res[k]).map(k => unsure[k]);
+      if (!missing.length && res.volMismatch) setOcr('warn', `Read ${res.type} ${res.w}×${res.d}×${res.l}, ${res.pcs} pcs/pack, but that doesn’t add up to the ${res.vol} m³ on the label. Check width, length and pcs.`);
+      else if (!missing.length && shaky.length) setOcr('warn', `Read ${res.type} ${res.w}×${res.d}×${res.l}, ${res.pcs} pcs/pack, but double-check the ${shaky.join(' and ')} against the label.`);
+      else if (!missing.length && res.volOk) setOcr('ok', `Read ${res.type} ${res.w}×${res.d}×${res.l}, ${res.pcs} pcs/pack ✓ (matches the ${res.vol} m³ on the label). Add packs and loose.`);
+      else if (!missing.length) setOcr('ok', `Read ${res.type} ${res.w}×${res.d}×${res.l}, ${res.pcs} pcs/pack. Check it matches the label, then add packs and loose.`);
+      else if (missing.length < 4) { setOcr('warn', 'Read part of the label.'); showReadError(`Couldn’t read: ${missing.join(', ')}. Rescan (straight on, less glare) or fill the gaps in.`); }
+      else { setOcr('warn', 'Couldn’t read the label.'); showReadError('Nothing useful read. Rescan (closer, straight on, less glare) or fill it in by hand.'); }
+    } catch (err) {
+      console.error(err);
+      setOcr('warn', 'Couldn’t read the photo.');
+      showReadError('Something went wrong reading the label (the reader needs signal the first time). Rescan or fill it in by hand.');
+    } finally {
+      $('scanBtn').removeAttribute('aria-disabled');
+    }
+  }
+  function showReadError(msg) { $('readErrorMsg').textContent = msg; $('readError').hidden = false; }
+  $('rescanBtn').addEventListener('click', () => { closeForm(); openCamera(); });
+  $('fillBtn').addEventListener('click', () => {
+    $('readError').hidden = true;
+    const first = !form?.product ? null : ['w', 'd', 'l', 'pcs'].find(id => !$(id).value);
+    if (first) $(first).focus(); else $('productSeg').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+
+  // Bay: GPS guess, updated as GPS improves until the user picks one themselves.
+  let lastBay = '';
+  try { lastBay = sessionStorage.getItem('geostamp.lastBay') || ''; } catch {}
+  function refreshBaySuggestion() {
+    if (!formOpen() || !form || form.editingId) { renderBayChips(); return; }
+    // Location is taken at the scan; it can only sharpen in the first 10 s (not drift as you walk off).
+    const fresh = bestFix();
+    if (fresh && (!form.fix || (Date.now() - form.openedAt < 10000 && fresh.acc < form.fix.acc))) form.fix = fresh;
+    const f = form.fix;
+    if (!bays.length) {
+      setBayStatus('info', f ? `Location ±${f.acc} m saved. No bays set up yet, so type the bay in.` : 'No bays set up yet, so type the bay in.');
+      if (!form.bayTouched && !$('bay').value && lastBay) $('bay').value = lastBay;
+      renderBayChips(); return;
+    }
+    if (!f) {
+      setBayStatus('warn', gpsError ? `GPS: ${gpsError}. Pick the bay yourself.` : 'Waiting for GPS… you can pick the bay yourself.');
+      if (!form.bayTouched && !$('bay').value && lastBay) { $('bay').value = lastBay; }
+      renderBayChips(); return;
+    }
+    const g = guessBay(f);
+    form.ranked = g.ranked;
+    form.bayGps = g.bay ? g.bay.name : null;
+    if (!form.bayTouched) $('bay').value = g.bay ? g.bay.name : (lastBay || '');
+    if (g.bay) {
+      const sure = g.bay.inside && f.acc <= 12;
+      const near = g.ranked.filter(r => r.name !== g.bay.name && r.dist <= f.acc + 3).map(r => r.name);
+      setBayStatus(sure && !near.length ? 'ok' : 'warn',
+        `GPS says ${g.bay.inside ? 'in' : 'near'} bay ${g.bay.name} (±${f.acc} m).` + (near.length ? ` Could also be ${near.slice(0, 3).join(', ')}.` : '') + ' Tap another bay if wrong.');
+    } else {
+      setBayStatus('warn', `Not in a bay by GPS (nearest ${g.ranked[0].name}, ${Math.round(g.ranked[0].dist)} m, ±${f.acc} m).` + (lastBay && !form.bayTouched ? ` Using last bay ${lastBay}.` : '') + ' Pick the bay.');
+    }
+    renderBayChips();
+  }
+  function renderBayChips() {
+    if (!formOpen()) return;
+    const names = [];
+    (form?.ranked || []).slice(0, 4).forEach(r => names.push(r.name));
+    if (lastBay && !names.includes(lastBay)) names.push(lastBay);
+    const cur = $('bay').value.trim().toUpperCase();
+    $('bayChips').innerHTML = names.map(n => `<button type="button" class="${n === cur ? 'on' : ''}" data-bay="${esc(n)}">${esc(n)}${n === form?.bayGps ? ' 📍' : ''}${n === lastBay ? ' ↺' : ''}</button>`).join('');
+  }
+  $('bayChips').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    $('bay').value = b.dataset.bay; form.bayTouched = true; renderBayChips();
+  });
+  $('bay').addEventListener('input', () => { if (form) form.bayTouched = true; renderBayChips(); });
+
+  function setProduct(p) {
+    if (form) form.product = p;
+    document.querySelectorAll('#productSeg button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
+  }
+  $('productSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { setProduct(b.dataset.p); fillDatalists(); } });
+
+  document.querySelectorAll('[data-step]').forEach(b => b.addEventListener('click', () => {
+    const el = $(b.dataset.step);
+    el.value = Math.max(0, (parseInt(el.value, 10) || 0) + +b.dataset.by);
+    updateTotal();
+  }));
+  ['pcs', 'packs', 'loose'].forEach(id => $(id).addEventListener('input', updateTotal));
+  ['packs', 'loose', 'pcs', 'w', 'd', 'l'].forEach(id => $(id).addEventListener('focus', e => e.target.select()));
+
+  const int = id => { const v = parseInt($(id).value, 10); return isNaN(v) ? null : v; };
+  function updateTotal() {
+    const pcs = int('pcs') || 0, packs = int('packs') || 0, loose = int('loose') || 0;
+    $('totalLine').textContent = `${packs} pack${packs === 1 ? '' : 's'} × ${pcs} + ${loose} loose = ${packs * pcs + loose} pcs`;
+  }
+  // Suggest sizes already used for this product.
+  function fillDatalists() {
+    const p = form?.product;
+    const pick = k => [...new Set(items.filter(i => !p || i.product === p).map(i => i[k]).filter(Boolean))].sort((a, b) => a - b);
+    $('wList').innerHTML = pick('w').map(v => `<option value="${v}">`).join('');
+    $('dList').innerHTML = pick('d').map(v => `<option value="${v}">`).join('');
+    $('lList').innerHTML = pick('l').map(v => `<option value="${v}">`).join('');
+  }
+
+  // Returns true if saved.
+  function saveForm() {
+    const bay = $('bay').value.trim().toUpperCase();
+    const product = form.product;
+    const w = int('w'), d = int('d'), l = int('l'), pcs = int('pcs') || 0, packs = int('packs') || 0, loose = int('loose') || 0;
+    const problems = [];
+    if (!bay) problems.push('bay');
+    if (!product) problems.push('product');
+    if (!w || !d || !l) problems.push('width, depth and length');
+    if (packs > 0 && !pcs) problems.push('pcs per pack (you have packs but no pcs per pack)');
+    if (packs * pcs + loose <= 0) problems.push('a quantity (packs or loose)');
+    if (problems.length) { alert('Still need: ' + problems.join('; ') + '.'); return false; }
+    if (bays.length && !bays.some(b => b.name === bay) && !confirm(`Bay “${bay}” isn’t on the bay map. Save anyway?`)) return false;
+    if (w > l && !confirm(`Width ${w} is bigger than length ${l}. Is that right?`)) return false;
+    const ref = $('ref').value.trim();
+    if (ref && !form.editingId) {
+      const dup = items.find(i => i.ref === ref);
+      if (dup && !confirm(`Label ${ref} was already counted in bay ${dup.bay} at ${fmtTime(dup.ts)}. Add it again?`)) return false;
+    }
+    const old = form.editingId ? items.find(i => i.id === form.editingId) : null;
+    const f = old ? null : form.fix;
+    const bayGps = old ? old.bayGps : form.bayGps;
+    const entry = {
+      id: old?.id || Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      ts: old?.ts || new Date().toISOString(),
+      bay, bayGps: bayGps || '', bayHow: bayGps ? (bayGps === bay ? 'GPS' : 'Changed') : 'Picked',
+      product, w, d, l, pcs, packs, loose, total: packs * pcs + loose,
+      method: old?.method || form.method, ref, desc: old?.desc ?? (form.desc || ''), note: $('note').value.trim(),
+      lat: old ? old.lat : f ? f.lat : null, lng: old ? old.lng : f ? f.lng : null, acc: old ? old.acc : f ? f.acc : null
+    };
+    if (old) items[items.indexOf(old)] = entry; else items.push(entry);
+    persist();
+    lastBay = bay; try { sessionStorage.setItem('geostamp.lastBay', bay); } catch {}
+    closeForm(); render();
+    toast('ok', `${old ? 'Updated' : 'Added'}: bay ${bay} · ${describe(entry)} · ${entry.total} pcs`);
+    return true;
+  }
+  $('saveBtn').addEventListener('click', saveForm);
+  $('discardBtn').addEventListener('click', () => { if (!form?.editingId || confirm('Discard changes?')) closeForm(); });
+  function closeForm() { form = null; $('form').hidden = true; window.scrollTo({ top: 0, behavior: 'smooth' }); }
+
+  // Starting a new scan/manual entry while one is open asks first.
+  let afterModal = null;
+  function guard(next) {
+    if (!formOpen()) { next(); return; }
+    afterModal = next;
+    $('modalMsg').innerHTML = form?.editingId ? 'You’re part way through editing an entry.' : 'The last entry hasn’t been added to the count yet.';
+    $('modalSave').textContent = form?.editingId ? 'Save the edit first' : 'Add it to the count first';
+    $('modal').hidden = false;
+  }
+  $('modalSave').addEventListener('click', () => { $('modal').hidden = true; if (saveForm()) afterModal?.(); });
+  $('modalDiscard').addEventListener('click', () => { $('modal').hidden = true; closeForm(); afterModal?.(); });
+  $('modalCancel').addEventListener('click', () => { $('modal').hidden = true; });
+  $('modal').addEventListener('click', e => { if (e.target === $('modal')) $('modal').hidden = true; });
+  window.addEventListener('beforeunload', e => { if (formOpen()) { e.preventDefault(); e.returnValue = ''; } });
+
+  $('scanBtn').addEventListener('click', () => guard(() => { getWorker().catch(() => {}); openCamera(); }));
+  $('manualBtn').addEventListener('click', () => guard(() => openForm('Manual')));
+
+  // ---------- list ----------
+  const describe = it => `${it.product} ${it.w}×${it.d}×${it.l}`;
+  const qtyText = it => `${it.packs} pack${it.packs === 1 ? '' : 's'} × ${it.pcs} + ${it.loose} loose = ${it.total} pcs`;
+  function render() {
+    const byBay = new Map();
+    for (const it of items) { if (!byBay.has(it.bay)) byBay.set(it.bay, []); byBay.get(it.bay).push(it); }
+    $('listTitle').textContent = items.length ? `Count · ${items.length} entr${items.length === 1 ? 'y' : 'ies'} in ${byBay.size} bay${byBay.size === 1 ? '' : 's'}` : 'Count';
+    const box = $('list');
+    if (!items.length) { box.innerHTML = '<div class="empty">Nothing counted yet. Scan a label or enter one by hand.</div>'; drawEntries(); return; }
+    box.innerHTML = [...byBay].sort((a, b) => bayCompare(a[0], b[0])).map(([bay, list]) => `
+      <div class="bay-group">
+        <div class="bh">Bay ${esc(bay)} <span>${list.length} entr${list.length === 1 ? 'y' : 'ies'}</span></div>
+        ${list.sort((a, b) => b.ts.localeCompare(a.ts)).map(it => `
+          <div class="entry">
+            <div class="what">${esc(describe(it))}${it.method === 'Manual' ? '<span class="tag">NO LABEL</span>' : ''}${it.bayHow === 'Changed' ? `<span class="tag">GPS SAID ${esc(it.bayGps)}</span>` : ''}</div>
+            <div class="how">${esc(qtyText(it))}</div>
+            <div class="meta">${esc(fmtTime(it.ts))}${it.acc != null ? ` · ±${it.acc} m` : ' · no GPS'}${it.ref ? ' · ' + esc(it.ref) : ''}${it.note ? ' · ' + esc(it.note) : ''}</div>
+            <div class="acts"><button class="small secondary" data-act="edit" data-id="${it.id}">Edit</button><button class="small danger" data-act="del" data-id="${it.id}">Delete</button></div>
+          </div>`).join('')}
+      </div>`).join('');
+    drawEntries();
+  }
+  $('list').addEventListener('click', e => {
+    const { act, id } = e.target.dataset || {};
+    const it = items.find(x => x.id === id);
+    if (!it) return;
+    if (act === 'edit') guard(() => openForm(it.method, it));
+    if (act === 'del' && confirm(`Delete ${describe(it)} (${it.total} pcs) from bay ${it.bay}?`)) { items = items.filter(x => x !== it); persist(); render(); }
+  });
+
+  // ---------- export ----------
+  $('exportBtn').addEventListener('click', async () => {
+    if (!items.length) { alert('Nothing to export yet.'); return; }
+    const head = ['Date', 'Time', 'Bay', 'GPS bay', 'Bay set by', 'Product', 'Width (mm)', 'Depth (mm)', 'Length (mm)',
+      'Pcs per pack', 'Packs', 'Loose pcs', 'Total pcs', 'Entry', 'Label ref', 'Description', 'Note', 'Latitude', 'Longitude', 'GPS accuracy (m)'];
+    const rows = [...items].sort((a, b) => bayCompare(a.bay, b.bay) || a.ts.localeCompare(b.ts)).map(it => {
+      const dt = new Date(it.ts);
+      return [dt.toLocaleDateString('en-GB'), dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+        it.bay, it.bayGps, it.bayHow, it.product, it.w, it.d, it.l, it.pcs, it.packs, it.loose, it.total,
+        it.method === 'Manual' ? 'Manual (no label)' : 'Scan', it.ref, it.desc, it.note,
+        it.lat != null ? it.lat.toFixed(6) : '', it.lng != null ? it.lng.toFixed(6) : '', it.acc ?? ''];
+    });
+    const csv = [head, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n');
+    const name = `Stock take ${new Date().toISOString().slice(0, 16).replace('T', ' ').replace(':', '')}.csv`;
+    const file = new File(['\ufeff' + csv], name, { type: 'text/csv' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: 'Stock take' }); return; }
+      catch (err) { if (err.name === 'AbortError') return; }
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(file); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  });
+  $('clearBtn').addEventListener('click', () => {
+    if (!items.length) return;
+    if (!confirm(`Clear all ${items.length} entries from this phone? Export first if you need them.`)) return;
+    items = []; persist(); render();
+  });
+
+  // ---------- helpers ----------
+  function setOcr(kind, msg) { const el = $('ocrStatus'); el.className = 'pill ' + kind; el.textContent = msg; }
+  function setBayStatus(kind, msg) { const el = $('bayStatus'); el.className = 'pill ' + kind; el.textContent = msg; }
+  let toastTimer = null;
+  function toast(kind, msg) {
+    const el = $('toast');
+    el.className = 'pill ' + kind; el.textContent = msg; el.hidden = false; el.style.opacity = 1;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.style.opacity = 0; setTimeout(() => { el.hidden = true; }, 300); }, 3500);
+  }
+  function fmtTime(iso) { return new Date(iso).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+  function csvCell(v) { v = v == null ? '' : String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+  function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+  // Warm the text reader in the background so the first scan is quicker.
+  setTimeout(() => getWorker().catch(() => {}), 1500);
+
+  window.__gs = { parseLabel, readLabel, handleShot, openCamera, rankBays, guessBay, loadBays, get items() { return items; }, get bays() { return bays; },
+    fakeFix(lat, lng, acc) { fixes = []; fixes.push({ lat, lng, acc, t: Date.now() }); updateGpsChip(); drawMe(); refreshBaySuggestion(); } }; // for testing
+  startWatch(); loadBays(); render();
+})();
+</script>
+</body>
+</html>
